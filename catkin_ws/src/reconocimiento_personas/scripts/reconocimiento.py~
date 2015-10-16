@@ -1,11 +1,38 @@
 #!/usr/bin/env python
 # license removed for brevity
 import rospy
+import roslib
 import sys, getopt
 import numpy as np
 import cv2
-import time
+import sys
 from reconocimiento_personas.msg import coordenadas
+from std_msgs.msg import String
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge, CvBridgeError
+import os
+import fnmatch
+
+
+class image_converter:
+
+  def __init__(self):
+
+    self.bridge = CvBridge()
+    self.image_sub = rospy.Subscriber("/roah_ipcam/image",Image,self.callback)
+    #cnt = 1
+
+  def callback(self,data):
+    global cv_image
+    try:
+      cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+    except CvBridgeError, e:
+      print e
+
+    (rows,cols,channels) = cv_image.shape
+
+    #cv2.imshow("Image window", cv_image)
+    cv2.waitKey(1)
 
 def init_feature(name):
     chunks = name.split('-')
@@ -51,7 +78,8 @@ def explore_match(win, img1, img2, kp_pairs, status = None, H = None):
     vis = np.zeros((max(h1, h2), w1+w2), np.uint8)
     vis[:h1, :w1] = img1
     vis[:h2, w1:w1+w2] = img2
-    vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
+    vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR) # aqui se cambia el color del la ventana de analisis 
+    #vis = cv2.cvtColor(vis, cv2.COLOR_RGB2GRAY)
 
     if H is not None:
         corners = np.float32([[0, 0], [w1, 0], [w1, h1], [0, h1]])
@@ -109,25 +137,37 @@ def explore_match(win, img1, img2, kp_pairs, status = None, H = None):
     return vis
 
 def match_and_draw(win, matcher,desc1,desc2,kp1,kp2,img1,img2):
-		global fnobj
+		global fnobj,matches,desc,oportunidades,i
         	print 'matching...'
         	raw_matches = matcher.knnMatch(desc1, trainDescriptors = desc2, k = 2) #2
         	p1, p2, kp_pairs = filter_matches(kp1, kp2, raw_matches)
         	if len(p2) >= 12:
         		H, status = cv2.findHomography(p1, p2, cv2.RANSAC, 5.0)
-                	print '%d / %d  es el resistol' % (np.sum(status), len(status))
-		
-	
-			
+                	print '%d / %d  es el objeto ' % (np.sum(status), len(status))
+			i = i+1
+
         	H, status = None, None
                 print '%d caracteristicas encontradas' % len(p1)
-		if len(p2) == 0:
-			fnobj = 'cal.png'
-			print 'cambiare de objeto %s ' % fnobj
+		if len(p2) <= 5:
+			option = '/home/felipe/catkin_ws/src/face_recognition/scripts/objetos2'
+			if(desc == 0):
+				option = '/home/felipe/catkin_ws/src/face_recognition/scripts/objetos2'
+				rospy.sleep(2.)
+				desc = 1
+				oportunidades = 0
+				for root, dirnames, filenames in os.walk(option):
+    					for filename in fnmatch.filter(filenames, '*.png'):	
+						matches.append(os.path.join(root, filename))
+				i=0
+				fnobj = matches[i]
+				print 'Entro a la carpeta del objeto 2'
+				
+			oportunidades = oportunidades + 1
+			#fnobj = 'cal.png'
+			#print 'cambiare de objeto %s ' % fnobj
 			
 		else:
 			vis = explore_match(win, img1, img2, kp_pairs, status, H)
-             
 
 def callback(data):
     global x,y,h,w
@@ -135,48 +175,73 @@ def callback(data):
     h = data.h
     x = data.x
     w = data.w
-    #rospy.loginfo("Las coordenadas son: %d" % (data.y,data.h,data.x,data.w))
     
 
-def listener():
-    global fnobj
-    rospy.init_node('reconocimiento', anonymous=True) 
-    rospy.Subscriber("chatter", coordenadas, callback)
-    
-    rate = rospy.Rate(50) #hz
-    cap = cv2.VideoCapture(0)
-    fnobj = 'logo.png'
-    opts, args = getopt.getopt(sys.argv[1:], '', ['feature='])
-    opts = dict(opts)
-    feature_name = opts.get('--feature', 'sift')
-    #rospy.spin()
 
-    while not rospy.is_shutdown():
+def main(args):
+  ic = image_converter()
+  y=0
+  x=0
+  h=1
+  w=1
+  rospy.init_node('reconocimiento_final', anonymous=True) 
+  rospy.Subscriber("chatter", coordenadas, callback)
+  global fnobj, cv_image,cnt,matches,desc,oportunidades,i
+  cnt = 0
+  while (y < 0):
+  	print 'Aun no llega la activacion para este nodo'
+  rate = rospy.Rate(10) #hz
+  cap = cv2.VideoCapture(0)
+
   
-        ret, frame = cap.read()
-    	crop_img = frame[y:h,x:w]   
-    	cv2.imwrite("full.png",crop_img)
-	
-	
-        img1 = cv2.imread('full.png',0)
-        img2 = cv2.imread(fnobj, 0)
-        detector, matcher = init_feature(feature_name)
-	if detector != None:
-        	print 'usando', feature_name
-        else:
-            	print 'unknown feature:', feature_name
-            	sys.exit(1)
-
-        kp1, desc1 = detector.detectAndCompute(img1, None)
-        kp2, desc2 = detector.detectAndCompute(img2, None)
-        print 'img1 - %d features, img2 - %d features' % (len(kp1), len(kp2))
-	
-	match_and_draw('analisis', matcher,desc1,desc2,kp1,kp2,img1,img2)	
-	cv2.waitKey(1)
+  opts, args = getopt.getopt(sys.argv[1:], '', ['feature='])
+  opts = dict(opts)
+  feature_name = opts.get('--feature', 'sift')
+  if(cnt == 0):
+    print 'Aun no llega la imagen'
+  oportunidades = 0
+  desc = 0
+  i = 0
+  matches = []
+  option = '/home/felipe/catkin_ws/src/face_recognition/scripts/objetos1'
+  for root, dirnames, filenames in os.walk(option):
+    	for filename in fnmatch.filter(filenames, '*.png'):	
+		matches.append(os.path.join(root, filename))
+  fnobj = matches[i]
+  while not rospy.is_shutdown():
+  #while not oportunidades > 10 | rospy.is_shutdown():
         
-if __name__ == '__main__':
-    try:
-        listener()
-    except rospy.ROSInterruptException:
-        pass
+    #ret, frame = cap.read()
+    crop_img = cv_image[y + 5:h - 5,x + 5:w - 5]   
+    cv2.imwrite("full.png",crop_img)
 	
+	
+    img1 = cv2.imread('full.png',0)
+    img2 = cv2.imread(fnobj, 0)
+    detector, matcher = init_feature(feature_name)
+    if detector != None:
+      	print 'usando', feature_name
+    else:
+        print 'unknown feature:', feature_name
+        sys.exit(1)
+
+    kp1, desc1 = detector.detectAndCompute(img1, None)
+    kp2, desc2 = detector.detectAndCompute(img2, None)
+    print 'img1 - %d features, img2 - %d features' % (len(kp1), len(kp2))
+	
+    match_and_draw('analisis', matcher,desc1,desc2,kp1,kp2,img1,img2)
+    for root, dirnames, filenames in os.walk(option):
+    	for filename in fnmatch.filter(filenames, '*.png'):	
+		matches.append(os.path.join(root, filename))
+    fnobj = matches[i]
+    if oportunidades >= 1000:
+	cv2.destroyAllWindows()
+    cv2.waitKey(1)
+  try:
+    rospy.spin()
+  except KeyboardInterrupt:
+    print "Shutting down"
+  cv2.destroyAllWindows()
+
+if __name__ == '__main__':
+    main(sys.argv)
