@@ -137,11 +137,11 @@ def explore_match(win, img1, img2, kp_pairs, status = None, H = None):
     return vis
 
 def match_and_draw(win, matcher,desc1,desc2,kp1,kp2,img1,img2):
-		global fnobj,matches,desc,oportunidades,i,p
+		global fnobj,matches,desc,oportunidades,i,p,u
         	print 'matching...'
         	raw_matches = matcher.knnMatch(desc1, trainDescriptors = desc2, k = 2) #2
         	p1, p2, kp_pairs = filter_matches(kp1, kp2, raw_matches)
-        	if len(p2) >= 5:
+        	if len(p2) >= 8:
 			#rospy.sleep(1.)
         		H, status = cv2.findHomography(p1, p2, cv2.RANSAC, 5.0)
                 	print '%d / %d  es el objeto ' % (np.sum(status), len(status))
@@ -149,18 +149,19 @@ def match_and_draw(win, matcher,desc1,desc2,kp1,kp2,img1,img2):
 			if (desc >= 5):
 				p = 'b'
 				print 'Esta asignando x al logo b'
+				u = u + 1
+				oportunidades = oportunidades - 1
 			else:
 				p = 'a'
-			oportunidades = oportunidades - 1
 
+			u = u + 1
+			print 'Entro'
         	H, status = None, None
                 print '%d caracteristicas encontradas' % len(p1)
-		if len(p2) <= 5:
-			#option = '/home/labrobotica/hakim/src/face_recognition/scripts/objetos1'
-			#rospy.sleep(1.)
+		if len(p2) >=3 | len (p2) <= 8 :
+			if (p == 'b'):
+				u = u + 1 
 			if(desc >= 5):
-				#rospy.sleep(5.)
-				oportunidades = 0
 				for root, dirnames, filenames in os.walk(option):
     					for filename in fnmatch.filter(filenames, 'logo_b*.png'):	
 						matches.append(os.path.join(root, filename))
@@ -169,13 +170,19 @@ def match_and_draw(win, matcher,desc1,desc2,kp1,kp2,img1,img2):
 				fnobj = matches[i]
 				print 'Esta buscando el logo b'
 				p = 'b'
+				u = 0
+				#oportunidades = 0
 			desc = desc + 1
-				
+			#u = u + 1
 			oportunidades = oportunidades + 1
-			if oportunidades >= 95:
+			if oportunidades >= 20:
 				p = 'c'
-			#fnobj = 'cal.png'
-			#print 'cambiare de objeto %s ' % fnobj
+			p = 'b'
+
+		if len(p2) <= 2:
+			oportunidades = oportunidades + 1
+			if oportunidades >= 20:
+				p = 'c'
 			
 		else:
 			vis = explore_match(win, img1, img2, kp_pairs, status, H)
@@ -199,7 +206,7 @@ def main(args):
   u = 0
   rospy.init_node('reconocimiento_final', anonymous=True) 
   rospy.Subscriber("chatter", coordenadas, callback)
-  global fnobj, cv_image,cnt,matches,desc,oportunidades,i,option,p
+  global fnobj, cv_image,cnt,matches,desc,oportunidades,i,option,p,u
   cnt = 0
   while (y < 0):
   	print 'Aun no llega la activacion para este nodo'
@@ -254,12 +261,14 @@ def main(args):
     if p == 'b':
 	q = 2 #Es el deliman
 	print "Es el deliman"
-	u = u + 1
+	u = u + 2
     if p == 'c':
 	q = 3 #Es la persona desconocida
 	print "Es la persona desconocida"
+	sys.exit()
     print 'oprtunidades: ',oportunidades
-    if u == 5:
+    print 'u: ',u
+    if u >= 12:
     	sys.exit()
     cv2.waitKey(1)
   try:
